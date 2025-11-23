@@ -1,0 +1,139 @@
+#include <WiFi.h>
+#include <WebServer.h>
+
+// Replace with your WiFi credentials
+const char* ssid = "moto g45 5G_2945";
+const char* password = "SSS333rrr";
+
+// Pin definitions
+const int ldrPin = 34;       // Digital input from LDR (via voltage comparator or threshold logic)
+const int ledPin = 23;       // Output to LED (streetlight)
+
+// Web server on port 80
+WebServer server(80);
+
+// Variables
+bool ledStatus = false;
+const int WIFI_TIMEOUT_SECONDS = 20; // Set a 20-second timeout
+
+// --- START OF ENHANCED HTML/CSS FUNCTION ---
+String getHTML() {
+  // Determine current states and assign class names for CSS styling
+  bool isDark = digitalRead(ldrPin) == HIGH;
+  String intensityText = isDark ? "Dark" : "Bright";
+  String intensityClass = isDark ? "status-dark" : "status-bright";
+
+  String statusText = ledStatus ? "ON" : "OFF";
+  String statusClass = ledStatus ? "status-on" : "status-off";
+  
+  // HTML structure starts here
+  String html = "<!DOCTYPE html><html><head><meta name='viewport' content='width=device-width, initial-scale=1.0'>";
+  html += "<meta http-equiv='refresh' content='5'>";
+  html += "<title>Smart Street Light</title>";
+  
+  // --- Embedded CSS for a clean, dark theme ---
+  html += "<style>";
+  html += "body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; background-color: #1a1a2e; color: #e5e5f7; text-align: center; margin: 0; padding: 20px;}";
+  html += ".container { max-width: 400px; margin: 40px auto; padding: 25px; background-color: #2a2a4a; border-radius: 12px; box-shadow: 0 4px 10px rgba(0, 0, 0, 0.4); }";
+  html += "h2 { color: #8c8cd9; margin-bottom: 30px; }";
+  html += ".status-card { padding: 15px; margin-bottom: 20px; border-radius: 8px; font-size: 1.1em; font-weight: bold; }";
+  
+  // Light Intensity Colors
+  html += ".status-dark { background-color: #e6005c; }"; // Reddish-pink for Dark
+  html += ".status-bright { background-color: #00b33c; }"; // Green for Bright
+  
+  // Street Light Status Colors
+  html += ".status-off { background-color: #6a0080; }"; // Purple for OFF
+  html += ".status-on { background-color: #007bff; }"; // Blue for ON
+  
+  html += ".label { display: block; font-size: 0.8em; color: #a0a0c0; margin-bottom: 5px; }";
+  html += ".value { font-size: 1.5em; }";
+  html += "</style>";
+  
+  html += "</head><body>";
+  html += "<div class='container'>";
+  html += "<h2>IoT Smart Street Light Monitor</h2>";
+
+  // Light Intensity Card
+  html += "<div class='status-card " + intensityClass + "'>";
+  html += "<span class='label'>Current Light Intensity</span>";
+  html += "<span class='value'>" + intensityText + "</span>";
+  html += "</div>";
+
+  // Street Light Status Card
+  html += "<div class='status-card " + statusClass + "'>";
+  html += "<span class='label'>Street Light Status</span>";
+  html += "<span class='value'>" + statusText + "</span>";
+  html += "</div>";
+  
+  html += "</div>"; // close container
+  html += "<p style='font-size:0.7em; color:#505070;'>Auto-refreshing every 5 seconds...</p>";
+  html += "</body></html>";
+  return html;
+}
+// --- END OF ENHANCED HTML/CSS FUNCTION ---
+
+
+void handleRoot() {
+  server.send(200, "text/html", getHTML());
+}
+
+void setup() {
+  Serial.begin(115200);
+
+  pinMode(ldrPin, INPUT);
+  pinMode(ledPin, OUTPUT);
+  
+  delay(100); 
+
+  Serial.println("\n--- ESP32 Booting Up ---");
+  Serial.print("Connecting to WiFi network: ");
+  Serial.println(ssid);
+  
+  WiFi.begin(ssid, password);
+  
+  int timeoutCount = 0;
+  while (WiFi.status() != WL_CONNECTED) {
+    delay(500);
+    Serial.print(".");
+    timeoutCount++;
+    
+    if (timeoutCount >= (WIFI_TIMEOUT_SECONDS * 2)) {
+      Serial.println("\n\n❌ Connection Failed: Timeout Reached.");
+      Serial.println("Verify SSID/Password and 2.4GHz Hotspot setting.");
+      Serial.print("Last WiFi Status Code: ");
+      Serial.println(WiFi.status()); 
+      return;
+    }
+  }
+
+  Serial.println("\n\n✅ Connected to Network!");
+  delay(100); 
+  
+  Serial.print("🌐 Website Address (IP): ");
+  Serial.println(WiFi.localIP()); 
+
+  server.on("/", handleRoot);
+  server.begin();
+  Serial.println("Server started successfully on port 80.");
+}
+
+void loop() {
+  if (WiFi.status() == WL_CONNECTED) {
+    server.handleClient();
+  }
+
+  // Read LDR 
+  int ldrValue = digitalRead(ldrPin);
+
+  // Control LED based on light level
+  if (ldrValue == HIGH) { // Dark -> Turn LED ON
+    digitalWrite(ledPin, HIGH);
+    ledStatus = true;
+  } else { // Bright -> Turn LED OFF
+    digitalWrite(ledPin, LOW);
+    ledStatus = false;
+  }
+
+  delay(1000); // Check LDR and handle web requests every second
+}
